@@ -1,0 +1,18 @@
+
+services:
+    delivery-calcualtion:
+        build: .
+        privileged: true
+        working_dir: /app
+        volumes:
+            - ./config:/app/config
+        networks:
+            internal:
+                aliases:
+                    - deliverytraking.docker.local
+        restart: unless-stopped
+
+networks:
+    internal:
+        name: voom-network
+        #external: true
