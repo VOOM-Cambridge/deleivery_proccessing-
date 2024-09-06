@@ -59,7 +59,7 @@ class SupplyChainTracker:
         result = query_api.query(query)
         out = result.to_values(columns=['_time', 'latitude', 'longitude', 'vehicle', 'start', 'destination'])[0]
         #print(out)
-        if out != None or out != []:
+        if out != None and out != []:
             new = {'_time':out[0], 'latitude':out[1], 'longitude':out[2], 'vehicle':out[3], 'start':out[4], 'destination':out[5]}
         else:
             new = None
@@ -187,9 +187,7 @@ class SupplyChainTracker:
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
         output = result.to_values(columns=['_time','_value', 'location'])
-        print("trolly status")
-        print(output)
-        if output[0] == None or output == [] or output == None:
+        if output == None or output == [] or output == None:
             return None, output
         elif output[0][1] == "out":
             return output[0][1] , output
@@ -207,35 +205,39 @@ class SupplyChainTracker:
                 timeStart = datetime.now()
                 for trolly in self.trolleyList:
                     activeState, output = self.findTrolleyActive(trolly, "-1d")
-                    timeStarRun = output[0][0] #.astimezone(london_timezone)
-                    locationLeft = output[0][2]
-                    london_timezone = pytz.timezone('Europe/London')
-                    current_utc_time = datetime.now(london_timezone)
-                    time_difference = current_utc_time - timeStarRun
-                    seconds_difference = round(time_difference.total_seconds())
-                    orders = self.checkOrderOnTrolley(trolly, (seconds_difference + 7200))
-                    #print("orders:  ")
-                    #print(orders)
-                    if activeState == "out": # trolley is active and moving between locations
-                        print("trolly is active: ", trolly)
-                        data = self.load_data_from_influxdb(seconds_difference)
-                        #print(data)
-                        sent = 0
-                        if data != None:
-                            coords = [data["latitude"], data["longitude"]]
-                            start = str(locationLeft) #data["start"]
-                            destination = str(data["destination"])
-                            #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
-                            dissToStart = self.haversine(self.locations[start], coords)
-                            dissToEnd = self.haversine(self.locations[destination], coords)
-                            percent_left = dissToEnd/(dissToEnd+dissToStart)
-                            journey_time = self.findJourneyTime(start,destination)
-                            remaining_time = journey_time*percent_left
-                            percent_comp = 1- percent_left
-                            # find remaining time in journey
-                            for ord in orders:
-                                # send messeages to localhost for MES and tracking
-                                self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
+                    print(trolly)
+                    print(activeState)
+                    print(output)
+                    if output != None and output != [] and activeState != None and activeState != []:
+                        timeStarRun = output[0][0] #.astimezone(london_timezone)
+                        locationLeft = output[0][2]
+                        london_timezone = pytz.timezone('Europe/London')
+                        current_utc_time = datetime.now(london_timezone)
+                        time_difference = current_utc_time - timeStarRun
+                        seconds_difference = round(time_difference.total_seconds())
+                        orders = self.checkOrderOnTrolley(trolly, (seconds_difference + 7200))
+                        #print("orders:  ")
+                        #print(orders)
+                        if activeState == "out": # trolley is active and moving between locations
+                            print("trolly is active: ", trolly)
+                            data = self.load_data_from_influxdb(seconds_difference)
+                            #print(data)
+                            sent = 0
+                            if data != None:
+                                coords = [data["latitude"], data["longitude"]]
+                                start = str(locationLeft) #data["start"]
+                                destination = str(data["destination"])
+                                #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
+                                dissToStart = self.haversine(self.locations[start], coords)
+                                dissToEnd = self.haversine(self.locations[destination], coords)
+                                percent_left = dissToEnd/(dissToEnd+dissToStart)
+                                journey_time = self.findJourneyTime(start,destination)
+                                remaining_time = journey_time*percent_left
+                                percent_comp = 1- percent_left
+                                # find remaining time in journey
+                                for ord in orders:
+                                    # send messeages to localhost for MES and tracking
+                                    self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
                     elif activeState == "in": # trolley is at a fixed location point start 
                         print("trolley at: " + locationLeft)
                         destination = str(locationLeft)
