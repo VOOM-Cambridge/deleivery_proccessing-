@@ -21,18 +21,23 @@ class SupplyChainTracker:
         self.name = self.config["constants"]["current_name"]
         self.order = self.config["constants"]["order"]
         self.trolleyList = self.config["constants"]["trolleyList"]
+        self.london_timezone = pytz.timezone("Europe/London")
+        self.lastMess = {}
+        self.lastMessSent ={}
 
         self.locations = {"Robot_Lab" :[52.209222464816634, 0.08702698588458352],
+                          "Robot_lab" :[52.209222464816634, 0.08702698588458352],
                          "3D_Printing":[52.20963378973377, 0.0876479255503501],
                          "Design_Studio":[52.20925064994319, 0.08727564922295765],
                          "Manual_Assembly":[52.20925064994319, 0.08727564922295765],
                          "Supplier":[52.209504315277606, 0.08767811011743598]}
 
-        self.journey_time = {"Robot_Lab" : {"3D_Printing": 200, "Design_Studio": 100, "Manual_Assembly": 200, "Supplier": 180},
-                         "3D_Printing": {"Robot_Lab": 200, "Design_Studio": 200, "Manual_Assembly": 200, "Supplier": 200},
-                         "Design Studio": {"3D_Printing": 200, "Robot_Lab": 100, "Manual_Assembly": 50, "Supplier": 180},
-                         "Manual Assembly": {"Design_Studio": 50,"3D_Printing": 200, "Robot_Lab": 100, "Supplier": 180} ,
-                         "Supplier":{"Design_Studio": 180,"3D_Printing": 200, "Robot_Lab": 180, "Manual_Assembly": 180} }
+        self.journey_time = {"Robot_Lab" : {"3D_Printing": 200, "Design_Studio": 100, "Manual_Assembly": 200, "Supplier": 180, "Robot_Lab": 0},
+                             "Robot_lab" : {"3D_Printing": 200, "Design_Studio": 100, "Manual_Assembly": 200, "Supplier": 180, "Robot_Lab": 0},
+                         "3D_Printing": {"Robot_Lab": 200, "Design_Studio": 200, "Manual_Assembly": 200, "Supplier": 200, "3D_Printing":0},
+                         "Design_Studio": {"3D_Printing": 200, "Robot_Lab": 100, "Manual_Assembly": 50, "Supplier": 180, "Design_Studio": 0},
+                         "Manual_Assembly": {"Design_Studio": 50,"3D_Printing": 200, "Robot_Lab": 100, "Supplier": 180, "Manual_Assembly": 0} ,
+                         "Supplier":{"Design_Studio": 180,"3D_Printing": 200, "Robot_Lab": 180, "Manual_Assembly": 180, "Supplier": 0} }
         self.locationDict = {"loc4": "Robot_Lab",
                             "loc2": "3D_Printing", 
                             "loc5": "Design_Studio",
@@ -53,14 +58,21 @@ class SupplyChainTracker:
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> map(fn: (r) => ({ r with _value: r.latitude}))
         |> group()
+        |>sort(columns: ["_time"])
         |>last()   
         '''
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
-        out = result.to_values(columns=['_time', 'latitude', 'longitude', 'vehicle', 'start', 'destination'])[0]
+        try:
+            out = result.to_values(columns=['_time', 'latitude', 'longitude', 'vehicle', 'start', 'destination'])[0]
+        except:
+            out = None
         #print(out)
         if out != None and out != []:
-            new = {'_time':out[0], 'latitude':out[1], 'longitude':out[2], 'vehicle':out[3], 'start':out[4], 'destination':out[5]}
+            try:
+                new = {'_time':out[0], 'latitude':out[1], 'longitude':out[2], 'vehicle':out[3], 'start':out[4], 'destination':out[5]}
+            except:
+                None
         else:
             new = None
         return new
@@ -87,57 +99,85 @@ class SupplyChainTracker:
         formatted_timestamp = delayed_time.isoformat()
         timestamp_str = delayed_time.strftime("%Y-%m-%dT%H:%M:%S")
 
-        client = mqtt.Client()
-
-        mess_delay = {
-            "remaining_time": remaining_time, 
-            "supplier": start,
-            "customer": destination,
-            "percentage": percent_comp,
-            "timestamp": formatted_timestamp,
-            "vehicle": vehicle,
-            "order": orderIn
-        }
-        if not arrival: # messeage about order arrival or at location
-            mess_MES = {
-                "name": orderIn,
-                "customer": destination,
-                "due": timestamp_str,
-            }
-            topicMES = f"MES/purchase/{self.name}/update/"
-        else:
-            mess_MES = {
-                "name": orderIn,
-                "customer": destination,
-                "due": timestamp_str,
-                "status": "completed"
-            }
-            topicMES = f"MES/purchase/{self.name}/update/"
-
-        json_message_delay = json.dumps(mess_delay)
-        json_message_mes = json.dumps(mess_MES)
-        
-        topicD = "Tracking/delivery/delays/"
-
+        percent_comp = round( percent_comp, 3)
+        remaining_time = round(remaining_time)
         try:
-            client.connect(self.mqtt_address, 1883, 60)
-            time.sleep(0.1)
-            client.publish(topicD, json_message_delay, qos=1)
-            time.sleep(0.1)
-            client.publish(topicMES, json_message_mes, qos=1)
-            time.sleep(0.1)
-            print("Message sent!" + orderIn)
+            client = mqtt.Client()
+
+            mess_check = {"remaining_time": remaining_time, 
+                "supplier": start, "customer": destination,
+                "percentage": percent_comp, "vehicle": vehicle}
+            
+            if orderIn not in self.lastMess:
+                self.lastMess[orderIn] = mess_check
+                self.lastMessSent[orderIn] = 0
+
+            if self.lastMess[orderIn] == mess_check:
+                self.lastMessSent[orderIn] = self.lastMessSent[orderIn] + 1
+            else:
+                self.lastMess[orderIn] = mess_check
+                self.lastMessSent[orderIn] = 0
+
+            mess_delay = {
+                "remaining_time": remaining_time, 
+                "supplier": start,
+                "customer": destination,
+                "percentage": percent_comp,
+                "timestamp": formatted_timestamp,
+                "vehicle": vehicle,
+                "order": orderIn
+            }
+            if not arrival: # messeage about order arrival or at location
+                mess_MES = {
+                    "name": orderIn,
+                    "customer": destination,
+                    "due": timestamp_str,
+                }
+                #topicMES = f"MES/purchase/{self.name}/update/"
+            else:
+                mess_MES = {
+                    "name": orderIn,
+                    "customer": destination,
+                    "due": timestamp_str,
+                    "status": "completed"
+                }
+                topicMESLocal = f"MES/purchase/{self.name}/update/"
+                topicMESCustomer = destination+"/MES/purchase/"+ self.name + "/update/"
+
+            json_message_delay = json.dumps(mess_delay)
+            json_message_mes = json.dumps(mess_MES)
+            
+            topicLocal = "Tracking/delivery/delays/"
+            topicCustomer = destination+"/Tracking/delivery/delays/"
+
+            if self.lastMessSent[orderIn] < 5:
+                try:
+                    client.connect(self.mqtt_address, 1883, 60)
+                    time.sleep(0.1)
+                    client.publish(topicLocal, json_message_delay, qos=1)
+                    time.sleep(0.1)
+                    client.publish(topicCustomer, json_message_delay, qos=1)
+                    time.sleep(0.1)
+                    client.publish(topicMESLocal, json_message_mes, qos=1)
+                    time.sleep(0.1)
+                    client.publish(topicMESCustomer, json_message_mes, qos=1)
+                    time.sleep(0.1)
+                    print("Message sent!" + orderIn)
+                except:
+                    print("Connection failed to broker")
+            else:
+                print("Message already sent 5 times!")
+            client.disconnect()
         except:
-            print("Connection failed to broker")
+            print("mqtt not connected")
+            client = ""
 
-        client.disconnect()
-
-    def checkOrderOnTrolley(self, trolly, timeback):
-        query = f'''from(bucket: "tracking_data_comp")
-                    |> range(start: -30d )
+    def checkOrderOnTrolley(self, trolly, time_back):
+        query = '''from(bucket: "tracking_data_comp")
+                    |> range(start: -''' + str(time_back) + '''s )
                     |> filter(fn: (r) => r["_measurement"] == "Tracking_comp")
                     |> filter(fn: (r) => r["_field"] == "child")
-                    |>filter(fn: (r) => r["parent"] == "{trolly}")
+                    |>filter(fn: (r) => r["parent"] == "'''+ trolly +'''")
                     |> group()
                     |> unique()'''
         query_api = self.clientIn.query_api()
@@ -146,11 +186,11 @@ class SupplyChainTracker:
         print(output)
 
         if output == [] or output == None:
-            query = f'''from(bucket: "tracking_data_comp")
-                        |> range(start: -30d )
+            query = '''from(bucket: "tracking_data_comp")
+                        |> range(start: -''' + str(time_back) + '''s )
                         |> filter(fn: (r) => r["_measurement"] == "Tracking_comp")
                         |> filter(fn: (r) => r["_field"] == "parent")
-                        |> filter(fn: (r) => r["child"] == "{self.order}")
+                        |> filter(fn: (r) => r["child"] == "'''+ trolly +'''")
                         |> group()
                         |> unique()'''
             table = query_api.query(query)
@@ -169,6 +209,7 @@ class SupplyChainTracker:
                     |> filter(fn: (r) => r["_measurement"] == "delviery")
                     |> filter(fn: (r) => r["order"] == "''' + order + '''")
                     |>group()
+                    |>sort(columns: ["_time"])
                     |>last()'''
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
@@ -177,12 +218,13 @@ class SupplyChainTracker:
 
     def findTrolleyActive(self, trolly, timeback):
         query = '''from(bucket: "supplychain_data")
-                    |> range(start: ''' + timeback + ''')
+                    |> range(start: ''' + str(timeback) + ''')
                     |> filter(fn: (r) => r["_measurement"] == "arrival")
                     |> filter(fn: (r) => r["_value"] == "''' + trolly + '''")
                     |>group()
-                    |> map(fn: (r) => ({ r with _value: r.state }))
-                    |> last()'''
+                    |>sort(columns: ["_time"])
+                    |>last()
+                    |> map(fn: (r) => ({ r with _value: r.state }))'''
         
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
@@ -195,79 +237,117 @@ class SupplyChainTracker:
             return output[0][1] , output
         #return not bool(output)
 
+    def findTimeOutlast(self, trolleyIn):
+        query = '''from(bucket: "supplychain_data")
+                    |> range(start: -1d)
+                    |> filter(fn: (r) => r["_measurement"] == "arrival")
+                    |> filter(fn: (r) => r["_value"] == "''' + trolleyIn + '''")
+                    |> filter(fn: (r) => r["state"] == "out")
+                    |>group()
+                    |>sort(columns: ["_time"])
+                    |>last()
+                    |> map(fn: (r) => ({ r with _value: r.state }))'''
+        
+        query_api = self.clientIn.query_api()
+        result = query_api.query(query)
+        output = result.to_values(columns=['_time', 'location'])
+        if output == None or output == [] or output == None:
+            location = None
+            timeOut = 1000
+        else:
+            location = output[0][1]
+            if location == None or location == "null":
+                location = ""
+            timeTo = output[0][0]
+            current_utc_time = datetime.now(self.london_timezone)
+            time_back = current_utc_time - timeTo
+            timeOut = round(time_back.total_seconds())
+        
+        return timeOut, location
+
     def run(self):
         timeStart = datetime.now()
         sent = 0
         while True: 
             timeNow = datetime.now()
-            if (timeNow - timeStart).total_seconds() > 10:
+            if (timeNow - timeStart).total_seconds() > 5:
                 print("checking")
                 timeStart = datetime.now()
-                for trolly in self.trolleyList:
-                    activeState, output = self.findTrolleyActive(trolly, "-1d")
-                    print(trolly)
-                    print(activeState)
-                    print(output)
-                    if output != None and output != [] and activeState != None and activeState != []:
-                        timeStarRun = output[0][0] #.astimezone(london_timezone)
-                        locationLeft = output[0][2]
-                        london_timezone = pytz.timezone('Europe/London')
-                        current_utc_time = datetime.now(london_timezone)
-                        time_difference = current_utc_time - timeStarRun
-                        seconds_difference = round(time_difference.total_seconds())
-                        orders = self.checkOrderOnTrolley(trolly, (seconds_difference + 7200))
-                        #print("orders:  ")
-                        #print(orders)
-                        if activeState == "out": # trolley is active and moving between locations
-                            print("trolly is active: ", trolly)
-                            data = self.load_data_from_influxdb(seconds_difference)
-                            #print(data)
-                            sent = 0
-                            if data != None:
-                                coords = [data["latitude"], data["longitude"]]
-                                start = str(locationLeft) #data["start"]
-                                destination = str(data["destination"])
-                                #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
-                                dissToStart = self.haversine(self.locations[start], coords)
-                                dissToEnd = self.haversine(self.locations[destination], coords)
-                                percent_left = dissToEnd/(dissToEnd+dissToStart)
-                                journey_time = self.findJourneyTime(start,destination)
-                                remaining_time = journey_time*percent_left
-                                percent_comp = 1- percent_left
-                                # find remaining time in journey
-                                for ord in orders:
-                                    # send messeages to localhost for MES and tracking
-                                    self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
-                    elif activeState == "in": # trolley is at a fixed location point start 
-                        print("trolley at: " + locationLeft)
-                        destination = str(locationLeft)
-                        for ord in orders:
-                            start = self.findStartOrder(ord)
-                            if start == None or start == []:
-                                # send messeages to localhost for MES and tracking
-                                if sent < 5:
-                                    self.sendMess(0, "", destination, 1, ord, True, trolly)
-                                    sent = sent + 1
-                            else:
-                                # send messeages to localhost for MES and tracking
-                                if start[0][1] == "null" or start[0][1] == None:
-                                    star = ""
+                try:
+                    for trolly in self.trolleyList:
+                        
+                        activeState, output = self.findTrolleyActive(trolly, "-1d")
+                        print(trolly)
+                        print(activeState)
+                        print(output)
+                        if output != None and output != [] and activeState != None and activeState != []:
+                            #print("into parts")
+                            timeStarRun = output[0][0] #.astimezone(london_timezone)
+                            locationLeft = output[0][2]
+                            if locationLeft in self.locations:
+                                # print("orders:  ")
+                                # print(orders)
+                                if activeState == "out": # trolley is active and moving between locations
+                                    print("trolly is active: ", trolly)
+                                    
+                                    current_utc_time = datetime.now(self.london_timezone)
+                                    time_back = current_utc_time - timeStarRun
+                                    seconds_difference = round(time_back.total_seconds())
+                                    orders = self.checkOrderOnTrolley(trolly, (seconds_difference  + 400))
+                                    data = self.load_data_from_influxdb(seconds_difference)
+                                    #print(data)
+                                    if data != None:
+                                        coords = [data["latitude"], data["longitude"]]
+                                        start = str(locationLeft) #data["start"]
+                                        destination = str(data["destination"])
+                                        if destination == self.name or start == self.name:
+                                            #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
+                                            dissToStart = self.haversine(self.locations[start], coords)
+                                            dissToEnd = self.haversine(self.locations[destination], coords)
+                                            percent_left = dissToEnd/(dissToEnd+dissToStart)
+                                            journey_time = self.findJourneyTime(start,destination)
+                                            remaining_time = journey_time*percent_left
+                                            percent_comp = 1 - percent_left
+                                            # find remaining time in journey
+                                            for ord in orders:
+                                                # send messeages to localhost for MES and tracking
+                                                self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
+                                    else:
+                                        # out signal order left but no trolly function
+                                        # sendMess(self, remaining_time, start, destination, percent_comp, orderIn, arrival, vehicle)
+                                        for ord in orders:
+                                            if locationLeft == self.name:
+                                                self.sendMess(200,locationLeft, "", 0, ord, False, trolly)
+                                elif activeState == "in": # trolley is at a fixed location point start 
+                                    print("trolley at: " + locationLeft)
+                                    destination = str(locationLeft)
+                                    # find last orders on trolly now deposited in destination
+                                    timeStartRun ,start = self.findTimeOutlast(trolly)
+                                    print(timeStartRun)
+                                    orders = self.checkOrderOnTrolley(trolly, (timeStartRun + 400))
+                                    for ord in orders:
+                                        #start = self.findStartOrder(ord)
+                                        #print(sent)
+                                        if start == None or start == []:
+                                            #print("None")
+                                            # send messeages to localhost for MES and tracking
+                                            if destination == self.name:
+                                                self.sendMess(0, "", destination, 1, ord, True, trolly)
+                                        else:
+                                            # send messeages to localhost for MES and tracking
+                                            
+                                            if destination == self.name or start == self.name:
+                                                self.sendMess(0, start, destination, 1, ord, True, trolly)
                                 else:
-                                    star = start[0][1]
-                                if sent < 5:
-                                    self.sendMess(0, star, destination, 1, ord, True, trolly)
-                                    sent = sent + 1
-                    else:
-                        print("no data for trolley")
-
-
-
-                 
-                else:
-                    print("no trolley " + trolly + " active")
-                    
+                                    print("no data for trolley")
+                        else:
+                            print("no trolley " + trolly + " active")
+                
+                except Exception as e:
+                    print(e)    
 
 if __name__ == "__main__":
-    supplyChain = SupplyChainTracker("/app/config/config.toml")
+    #supplyChain = SupplyChainTracker("/app/config/config.toml")
+    supplyChain = SupplyChainTracker("./config_local.toml")
     supplyChain.run()
 
