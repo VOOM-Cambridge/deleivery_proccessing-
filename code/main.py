@@ -172,14 +172,23 @@ class SupplyChainTracker:
             print("mqtt not connected")
             client = ""
 
-    def checkOrderOnTrolley(self, trolly, time_back):
-        query = '''from(bucket: "tracking_data_comp")
-                    |> range(start: -''' + str(time_back) + '''s )
-                    |> filter(fn: (r) => r["_measurement"] == "Tracking_comp")
-                    |> filter(fn: (r) => r["_field"] == "child")
-                    |>filter(fn: (r) => r["parent"] == "'''+ trolly +'''")
-                    |> group()
-                    |> unique()'''
+    def checkOrderOnTrolley(self, trolly, time_start,time_back):
+        if time_start == 0:
+            query = '''from(bucket: "tracking_data_comp")
+                        |> range(start: -''' + str(time_back) + '''s )
+                        |> filter(fn: (r) => r["_measurement"] == "Tracking_comp")
+                        |> filter(fn: (r) => r["_field"] == "child")
+                        |> filter(fn: (r) => r["parent"] == "'''+ trolly +'''")
+                        |> group()
+                        |> unique()'''
+        else:
+            query = '''from(bucket: "tracking_data_comp")
+                        |> range(start: -''' + str(time_back) + '''s ,  stop: -''' + str(time_start) + '''s )
+                        |> filter(fn: (r) => r["_measurement"] == "Tracking_comp")
+                        |> filter(fn: (r) => r["_field"] == "child")
+                        |> filter(fn: (r) => r["parent"] == "'''+ trolly +'''")
+                        |> group()
+                        |> unique()'''
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
         output = result.to_values(columns=['_value'])
@@ -293,7 +302,7 @@ class SupplyChainTracker:
                                     current_utc_time = datetime.now(self.london_timezone)
                                     time_back = current_utc_time - timeStarRun
                                     seconds_difference = round(time_back.total_seconds())
-                                    orders = self.checkOrderOnTrolley(trolly, (seconds_difference  + 400))
+                                    orders = self.checkOrderOnTrolley(trolly, 0, (seconds_difference  + 750))
                                     data = self.load_data_from_influxdb(seconds_difference)
                                     #print(data)
                                     if data != None:
@@ -324,20 +333,17 @@ class SupplyChainTracker:
                                     # find last orders on trolly now deposited in destination
                                     timeStartRun ,start = self.findTimeOutlast(trolly)
                                     print(timeStartRun)
-                                    orders = self.checkOrderOnTrolley(trolly, (timeStartRun + 400))
-                                    for ord in orders:
-                                        #start = self.findStartOrder(ord)
-                                        #print(sent)
-                                        if start == None or start == []:
-                                            #print("None")
-                                            # send messeages to localhost for MES and tracking
-                                            if destination == self.name:
-                                                self.sendMess(0, "", destination, 1, ord, True, trolly)
-                                        else:
-                                            # send messeages to localhost for MES and tracking
-                                            
-                                            if destination == self.name or start == self.name:
+                                    if destination != self.name:
+                                        orders = self.checkOrderOnTrolley(trolly, 0,(timeStartRun + 750))
+                                        # check if desitnation is current location 
+                                    
+                                        for ord in orders:  
+                                            if start == self.name:
                                                 self.sendMess(0, start, destination, 1, ord, True, trolly)
+                                    else: # desitination is current location
+                                        orders = self.checkOrderOnTrolley(trolly, timeStartRun, (timeStartRun + 750))#
+                                        for ord in orders:  
+                                            self.sendMess(0, start, destination, 1, ord, True, trolly)
                                 else:
                                     print("no data for trolley")
                         else:
@@ -347,7 +353,7 @@ class SupplyChainTracker:
                     print(e)    
 
 if __name__ == "__main__":
-    #supplyChain = SupplyChainTracker("/app/config/config.toml")
-    supplyChain = SupplyChainTracker("./config_local.toml")
+    supplyChain = SupplyChainTracker("/app/config/config.toml")
+    #supplyChain = SupplyChainTracker("./config_local.toml")
     supplyChain.run()
 
