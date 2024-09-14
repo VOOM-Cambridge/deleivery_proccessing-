@@ -212,18 +212,27 @@ class SupplyChainTracker:
         return out
 
 
-    def findStartOrder(self, order):
+    def checkOrderOnTrolleyDelivery(self, trolly, time_start,time_back):
         query = '''from(bucket: "supplychain_data")
-                    |> range(start: -2d)
+                    |> range(start: -''' + str(time_back) + '''s )
                     |> filter(fn: (r) => r["_measurement"] == "delviery")
-                    |> filter(fn: (r) => r["order"] == "''' + order + '''")
-                    |>group()
+                    |> filter(fn: (r) => r["vehicle"] == "''' + trolly + '''")
+                    |> filter(fn: (r) => r["customer"] == "''' + self.name + '''")
+                    |>group(columns: ["order"])
                     |>sort(columns: ["_time"])
-                    |>last()'''
+                    |>last()
+                     |> map(fn: (r) => ({ r with _value: r.order}))
+                     |>group()'''
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
-        output = result.to_values(columns=["customer", "supplier"])
-        return output
+        output = result.to_values(columns=["supplier","_value"])
+        try:
+            ordersOut = [x[1] for x in output]
+            supplier = [x[0] for x in output]
+        except:
+            ordersOut = None
+            supplier = None
+        return supplier, ordersOut
 
     def findTrolleyActive(self, trolly, timeback):
         query = '''from(bucket: "supplychain_data")
@@ -302,48 +311,55 @@ class SupplyChainTracker:
                                     current_utc_time = datetime.now(self.london_timezone)
                                     time_back = current_utc_time - timeStarRun
                                     seconds_difference = round(time_back.total_seconds())
-                                    orders = self.checkOrderOnTrolley(trolly, 0, (seconds_difference  + 750))
+                                    
                                     data = self.load_data_from_influxdb(seconds_difference)
                                     #print(data)
                                     if data != None:
                                         coords = [data["latitude"], data["longitude"]]
                                         start = str(locationLeft) #data["start"]
                                         destination = str(data["destination"])
-                                        if destination == self.name or start == self.name:
+                                        dissToStart = self.haversine(self.locations[start], coords)
+                                        dissToEnd = self.haversine(self.locations[destination], coords)
+                                        percent_left = dissToEnd/(dissToEnd+dissToStart)
+                                        journey_time = self.findJourneyTime(start,destination)
+                                        remaining_time = journey_time*percent_left
+                                        percent_comp = 1 - percent_left
+                                        if start == self.name:
+                                            orders = self.checkOrderOnTrolley(trolly, 0, (seconds_difference  + 750))
+                                            self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
+                                        elif destination == self.name:
                                             #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
-                                            dissToStart = self.haversine(self.locations[start], coords)
-                                            dissToEnd = self.haversine(self.locations[destination], coords)
-                                            percent_left = dissToEnd/(dissToEnd+dissToStart)
-                                            journey_time = self.findJourneyTime(start,destination)
-                                            remaining_time = journey_time*percent_left
-                                            percent_comp = 1 - percent_left
+                                            supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference  + 100))
                                             # find remaining time in journey
                                             for ord in orders:
-                                                # send messeages to localhost for MES and tracking
-                                                self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
-                                    else:
-                                        # out signal order left but no trolly function
-                                        # sendMess(self, remaining_time, start, destination, percent_comp, orderIn, arrival, vehicle)
-                                        for ord in orders:
-                                            if locationLeft == self.name:
-                                                self.sendMess(200,locationLeft, "", 0, ord, False, trolly)
+                                                if ord != None or ord != []:
+                                                    self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly)
+                                                
+                                    # else:
+                                    #     # out signal order left but no trolly function
+                                    #     # sendMess(self, remaining_time, start, destination, percent_comp, orderIn, arrival, vehicle)
+                                    #     for ord in orders:
+                                    #         if locationLeft == self.name:
+                                    #             self.sendMess(200,locationLeft, "", 0, ord, False, trolly)
                                 elif activeState == "in": # trolley is at a fixed location point start 
                                     print("trolley at: " + locationLeft)
                                     destination = str(locationLeft)
                                     # find last orders on trolly now deposited in destination
                                     timeStartRun ,start = self.findTimeOutlast(trolly)
                                     print(timeStartRun)
-                                    if destination != self.name:
-                                        orders = self.checkOrderOnTrolley(trolly, 0,(timeStartRun + 750))
+                                    if destination == self.name:
+                                        # new delivery for this lab from supplier
+                                        supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(timeStartRun))
                                         # check if desitnation is current location 
-                                    
-                                        for ord in orders:  
-                                            if start == self.name:
-                                                self.sendMess(0, start, destination, 1, ord, True, trolly)
-                                    else: # desitination is current location
-                                        orders = self.checkOrderOnTrolley(trolly, timeStartRun, (timeStartRun + 750))#
-                                        for ord in orders:  
-                                            self.sendMess(0, start, destination, 1, ord, True, trolly)
+                                        if orders != None or orders != []:
+                                            for i,ord in orders:  
+                                                self.sendMess(0, supplier[i], destination, 1, ord, True, trolly)
+                                    else: # desitination is not current location
+                                        #orders = self.checkOrderOnTrolley(trolly, timeStartRun, (timeStartRun + 750))#
+                                        if start == self.name:
+                                            # delivery to customer form this lab send message to confirm arrival
+                                            for ord in orders:  
+                                                self.sendMess(0, self.name, destination, 1, ord, True, trolly)
                                 else:
                                     print("no data for trolley")
                         else:
