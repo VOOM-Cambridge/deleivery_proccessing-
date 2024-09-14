@@ -324,13 +324,18 @@ class SupplyChainTracker:
                                         journey_time = self.findJourneyTime(start,destination)
                                         remaining_time = journey_time*percent_left
                                         percent_comp = 1 - percent_left
-                                        if start == self.name:
+                                        if locationLeft == self.name:
+                                            print("Checking local orders sent from " + str(locationLeft))
                                             orders = self.checkOrderOnTrolley(trolly, 0, (seconds_difference  + 750))
-                                            self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
+                                            print(orders)
+                                            for ord in orders:
+                                                self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
                                         elif destination == self.name:
+                                            print("Checking orders arriving at" + str(destination))
                                             #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
                                             supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference  + 100))
                                             # find remaining time in journey
+                                            print(orders)
                                             for ord in orders:
                                                 if ord != None or ord != []:
                                                     self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly)

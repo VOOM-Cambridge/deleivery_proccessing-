@@ -1,10 +1,10 @@
 [constants]
 mqtt_address = "mqtt.docker.local"
-current_name = "3D_Printing"
+current_name = "Supplier"
 order = "RL10001"
 trolleyList = ["Trolley_1", "Trolley_2", "Trolley_3"]
 
 [influxdb]
 url = "http://timeseries-db.docker.local:8086"
-token = "robot-lab-2023"
-org = "Robot_Lab"
+token = "voom-random-intial-tocken-akheen484789fjhfja=006/54"
+org = "Supplier_Lab"
