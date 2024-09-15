@@ -340,7 +340,8 @@ class SupplyChainTracker:
                                                 print(start)
                                                 print(destination)
                                                 self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly, False)
-                                        elif destination == self.name:
+                                        
+                                        if destination == self.name:
                                             print("Checking orders arriving at" + str(destination))
                                             #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
                                             supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference))
@@ -376,9 +377,8 @@ class SupplyChainTracker:
                                                 print(supplier[i])
                                                 print(destination)
                                                 self.sendMess(0, supplier[i], destination, 1, ord, True, trolly, True)
-                                    else: # desitination is not current location
-                                        #orders = self.checkOrderOnTrolley(trolly, timeStartRun, (timeStartRun + 750))#
-                                        if start == self.name:
+                                    
+                                    if start == self.name:
                                             print("orders triggerred by in at customer starting at" + str(start))
                                             # delivery to customer form this lab send message to confirm arrival
                                             for ord in orders:  
