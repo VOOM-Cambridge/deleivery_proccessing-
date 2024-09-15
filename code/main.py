@@ -332,17 +332,17 @@ class SupplyChainTracker:
                                                 print(start)
                                                 print(destination)
                                                 self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
-                                        elif destination == self.name:
-                                            print("Checking orders arriving at" + str(destination))
-                                            #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
-                                            supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference  + 100))
-                                            # find remaining time in journey
-                                            print(orders)
-                                            if orders != None:
-                                                for ord in orders:
-                                                    print(start)
-                                                    print(destination)
-                                                    self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly)
+                                        # elif destination == self.name:
+                                        #     print("Checking orders arriving at" + str(destination))
+                                        #     #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
+                                        #     supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference  + 100))
+                                        #     # find remaining time in journey
+                                        #     print(orders)
+                                        #     if orders != None:
+                                        #         for ord in orders:
+                                        #             print(start)
+                                        #             print(destination)
+                                        #             self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly)
                                                 
                                     # else:
                                     #     # out signal order left but no trolly function
