@@ -93,7 +93,7 @@ class SupplyChainTracker:
     def findJourneyTime(self, startLoc, endLoc):
         return self.journey_time[startLoc][endLoc]
 
-    def sendMess(self, remaining_time, start, destination, percent_comp, orderIn, arrival, vehicle):
+    def sendMess(self, remaining_time, start, destination, percent_comp, orderIn, arrival, vehicle, localOnly = False):
         now = datetime.now(timezone.utc)
         delayed_time = now + timedelta(seconds=remaining_time)
         formatted_timestamp = delayed_time.isoformat()
@@ -147,8 +147,8 @@ class SupplyChainTracker:
             json_message_delay = json.dumps(mess_delay)
             json_message_mes = json.dumps(mess_MES)
             
-            topicLocal = "Tracking/delivery/delays/"
-            topicCustomer = destination+"/Tracking/delivery/delays/"
+            topicLocal = "Tracking/delivery/delays/from/" + self.name + "/"
+            topicCustomer = destination+"/Tracking/delivery/delays/from/" + self.name + "/"
 
             if self.lastMessSent[orderIn] < 5:
                 try:
@@ -156,12 +156,14 @@ class SupplyChainTracker:
                     time.sleep(0.1)
                     client.publish(topicLocal, json_message_delay, qos=1)
                     time.sleep(0.1)
-                    client.publish(topicCustomer, json_message_delay, qos=1)
-                    time.sleep(0.1)
+                    if localOnly == False:
+                        client.publish(topicCustomer, json_message_delay, qos=1)
+                        time.sleep(0.1)
                     client.publish(topicMESLocal, json_message_mes, qos=1)
                     time.sleep(0.1)
-                    client.publish(topicMESCustomer, json_message_mes, qos=1)
-                    time.sleep(0.1)
+                    if localOnly == False:
+                        client.publish(topicMESCustomer, json_message_mes, qos=1)
+                        time.sleep(0.1)
                     print("Message sent!" + orderIn)
                 except:
                     print("Connection failed to broker")
@@ -284,9 +286,15 @@ class SupplyChainTracker:
 
     def run(self):
         timeStart = datetime.now()
+        timeStart2 = datetime.now()
         sent = 0
         while True: 
             timeNow = datetime.now()
+            if (timeNow - timeStart2).total_seconds() > 3600:
+                timeStart2 = datetime.now()
+                self.lastMess = {}
+                self.lastMessSent ={}
+
             if (timeNow - timeStart).total_seconds() > 5:
                 print("checking")
                 timeStart = datetime.now()
@@ -331,18 +339,18 @@ class SupplyChainTracker:
                                             for ord in orders:
                                                 print(start)
                                                 print(destination)
-                                                self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
-                                        # elif destination == self.name:
-                                        #     print("Checking orders arriving at" + str(destination))
-                                        #     #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
-                                        #     supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference  + 100))
-                                        #     # find remaining time in journey
-                                        #     print(orders)
-                                        #     if orders != None:
-                                        #         for ord in orders:
-                                        #             print(start)
-                                        #             print(destination)
-                                        #             self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly)
+                                                self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly, False)
+                                        elif destination == self.name:
+                                            print("Checking orders arriving at" + str(destination))
+                                            #location = self.findTrollyLocation(trolly, self.clientIn.query_api())
+                                            supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference))
+                                            # find remaining time in journey
+                                            print(orders)
+                                            if orders != None:
+                                                for ord in orders:
+                                                    print(start)
+                                                    print(destination)
+                                                    self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly, False)
                                                 
                                     # else:
                                     #     # out signal order left but no trolly function
@@ -367,7 +375,7 @@ class SupplyChainTracker:
                                                 print(ord)
                                                 print(supplier[i])
                                                 print(destination)
-                                                self.sendMess(0, supplier[i], destination, 1, ord, True, trolly)
+                                                self.sendMess(0, supplier[i], destination, 1, ord, True, trolly, True)
                                     else: # desitination is not current location
                                         #orders = self.checkOrderOnTrolley(trolly, timeStartRun, (timeStartRun + 750))#
                                         if start == self.name:
@@ -377,7 +385,7 @@ class SupplyChainTracker:
                                                 print(ord)
                                                 print(start)
                                                 print(destination)
-                                                self.sendMess(0, start, destination, 1, ord, True, trolly)
+                                                self.sendMess(0, start, destination, 1, ord, True, trolly, False)
                                 else:
                                     print("no data for trolley")
                         else:
@@ -387,7 +395,7 @@ class SupplyChainTracker:
                     print(e)    
 
 if __name__ == "__main__":
-    #supplyChain = SupplyChainTracker("/app/config/config.toml")
-    supplyChain = SupplyChainTracker("./config_local.toml")
+    supplyChain = SupplyChainTracker("/app/config/config.toml")
+    #supplyChain = SupplyChainTracker("./config_local.toml")
     supplyChain.run()
 
