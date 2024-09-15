@@ -143,12 +143,14 @@ class SupplyChainTracker:
                 }
                 topicMESLocal = f"MES/purchase/{self.name}/update/"
                 topicMESCustomer = destination+"/MES/purchase/"+ self.name + "/update/"
+                topicMESSupplier = destination+"/MES/purchase/"+ self.name + "/update/"
 
             json_message_delay = json.dumps(mess_delay)
             json_message_mes = json.dumps(mess_MES)
             
             topicLocal = "Tracking/delivery/delays/from/" + self.name + "/"
             topicCustomer = destination+"/Tracking/delivery/delays/from/" + self.name + "/"
+            topicSupplier = start+"/Tracking/delivery/delays/from/" + self.name + "/"
 
             if self.lastMessSent[orderIn] < 5:
                 try:
@@ -159,11 +161,15 @@ class SupplyChainTracker:
                     if localOnly == False:
                         client.publish(topicCustomer, json_message_delay, qos=1)
                         time.sleep(0.1)
+                    else:
+                        client.publish(topicSupplier, json_message_delay, qos=1)
                     client.publish(topicMESLocal, json_message_mes, qos=1)
                     time.sleep(0.1)
                     if localOnly == False:
                         client.publish(topicMESCustomer, json_message_mes, qos=1)
                         time.sleep(0.1)
+                    else:
+                        client.publish(topicMESSupplier, json_message_mes, qos=1)
                     print("Message sent!" + orderIn)
                 except:
                     print("Connection failed to broker")
@@ -332,7 +338,7 @@ class SupplyChainTracker:
                                         journey_time = self.findJourneyTime(start,destination)
                                         remaining_time = journey_time*percent_left
                                         percent_comp = 1 - percent_left
-                                        if start == self.name:
+                                        if start == self.name or locationLeft == self.name:
                                             print("Checking local orders sent from " + str(locationLeft))
                                             orders = self.checkOrderOnTrolley(trolly, 0, (seconds_difference  + 750))
                                             print(orders)
@@ -365,6 +371,7 @@ class SupplyChainTracker:
                                     # find last orders on trolly now deposited in destination
                                     timeStartRun ,start = self.findTimeOutlast(trolly)
                                     print(timeStartRun)
+                                    
                                     if destination == self.name:
                                         print("orders triggerred by in at" + str(destination))
                                         # new delivery for this lab from supplier
@@ -379,7 +386,7 @@ class SupplyChainTracker:
                                                 self.sendMess(0, supplier[i], destination, 1, ord, True, trolly, True)
                                     
                                     if start == self.name:
-                                            print("orders triggerred by in at customer starting at" + str(start))
+                                            print("orders triggerred by in at customer starting at " + str(start))
                                             # delivery to customer form this lab send message to confirm arrival
                                             for ord in orders:  
                                                 print(ord)
