@@ -143,7 +143,7 @@ class SupplyChainTracker:
                 }
                 topicMESLocal = f"MES/purchase/{self.name}/update/"
                 topicMESCustomer = destination+"/MES/purchase/"+ self.name + "/update/"
-                topicMESSupplier = destination+"/MES/purchase/"+ self.name + "/update/"
+                topicMESSupplier = destination+"/MES/order/"+ self.name + "/update/"
 
             json_message_delay = json.dumps(mess_delay)
             json_message_mes = json.dumps(mess_MES)
