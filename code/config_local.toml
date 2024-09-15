@@ -2,7 +2,7 @@
 mqtt_address = "129.169.48.173"
 current_name = "3D_Printing"
 order = "RL10001"
-trolleyList = ["Trolley_2"]
+trolleyList = ["Trolley_3"]
 
 [influxdb]
 url = "http://129.169.48.173:8086"

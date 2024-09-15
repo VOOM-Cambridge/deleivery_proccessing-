@@ -192,7 +192,6 @@ class SupplyChainTracker:
         query_api = self.clientIn.query_api()
         result = query_api.query(query)
         output = result.to_values(columns=['_value'])
-        print(output)
 
         if output == [] or output == None:
             query = '''from(bucket: "tracking_data_comp")
@@ -311,12 +310,13 @@ class SupplyChainTracker:
                                     current_utc_time = datetime.now(self.london_timezone)
                                     time_back = current_utc_time - timeStarRun
                                     seconds_difference = round(time_back.total_seconds())
-                                    
+                                    print(seconds_difference)
                                     data = self.load_data_from_influxdb(seconds_difference)
+                                    print(data)
                                     #print(data)
                                     if data != None:
                                         coords = [data["latitude"], data["longitude"]]
-                                        start = str(locationLeft) #data["start"]
+                                        start = str(data["start"])
                                         destination = str(data["destination"])
                                         dissToStart = self.haversine(self.locations[start], coords)
                                         dissToEnd = self.haversine(self.locations[destination], coords)
@@ -324,11 +324,13 @@ class SupplyChainTracker:
                                         journey_time = self.findJourneyTime(start,destination)
                                         remaining_time = journey_time*percent_left
                                         percent_comp = 1 - percent_left
-                                        if locationLeft == self.name:
+                                        if start == self.name:
                                             print("Checking local orders sent from " + str(locationLeft))
                                             orders = self.checkOrderOnTrolley(trolly, 0, (seconds_difference  + 750))
                                             print(orders)
                                             for ord in orders:
+                                                print(start)
+                                                print(destination)
                                                 self.sendMess(remaining_time, start, destination, percent_comp, ord, False, trolly)
                                         elif destination == self.name:
                                             print("Checking orders arriving at" + str(destination))
@@ -336,8 +338,10 @@ class SupplyChainTracker:
                                             supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(seconds_difference  + 100))
                                             # find remaining time in journey
                                             print(orders)
-                                            for ord in orders:
-                                                if ord != None or ord != []:
+                                            if orders != None:
+                                                for ord in orders:
+                                                    print(start)
+                                                    print(destination)
                                                     self.sendMess(remaining_time, start, destination, percent_comp, ord, True, trolly)
                                                 
                                     # else:
@@ -353,18 +357,27 @@ class SupplyChainTracker:
                                     timeStartRun ,start = self.findTimeOutlast(trolly)
                                     print(timeStartRun)
                                     if destination == self.name:
+                                        print("orders triggerred by in at" + str(destination))
                                         # new delivery for this lab from supplier
                                         supplier, orders = self.checkOrderOnTrolleyDelivery(trolly, 0,(timeStartRun))
                                         # check if desitnation is current location 
                                         if orders != None or orders != []:
-                                            for i,ord in orders:  
+                                            for i in range(len(orders)):  
+                                                ord = orders[i]
+                                                print(ord)
+                                                print(supplier[i])
+                                                print(destination)
                                                 self.sendMess(0, supplier[i], destination, 1, ord, True, trolly)
                                     else: # desitination is not current location
                                         #orders = self.checkOrderOnTrolley(trolly, timeStartRun, (timeStartRun + 750))#
                                         if start == self.name:
+                                            print("orders triggerred by in at customer starting at" + str(start))
                                             # delivery to customer form this lab send message to confirm arrival
                                             for ord in orders:  
-                                                self.sendMess(0, self.name, destination, 1, ord, True, trolly)
+                                                print(ord)
+                                                print(start)
+                                                print(destination)
+                                                self.sendMess(0, start, destination, 1, ord, True, trolly)
                                 else:
                                     print("no data for trolley")
                         else:
@@ -374,7 +387,7 @@ class SupplyChainTracker:
                     print(e)    
 
 if __name__ == "__main__":
-    supplyChain = SupplyChainTracker("/app/config/config.toml")
-    #supplyChain = SupplyChainTracker("./config_local.toml")
+    #supplyChain = SupplyChainTracker("/app/config/config.toml")
+    supplyChain = SupplyChainTracker("./config_local.toml")
     supplyChain.run()
 
